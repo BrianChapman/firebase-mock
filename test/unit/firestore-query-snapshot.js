@@ -3,6 +3,8 @@
 var expect   = require('chai').use(require('sinon-chai')).expect;
 var sinon    = require('sinon');
 var Snapshot = require('../../src/firestore-query-snapshot');
+var DocumentChange = require('../../src/firestore-document-change');
+var DocumentChangeType = require('../../src/firestore-document-change-type');
 var Firestore = require('../../').MockFirestore;
 
 describe('QuerySnapshot', function () {
@@ -16,13 +18,15 @@ describe('QuerySnapshot', function () {
   describe('#forEach', function () {
 
     it('calls the callback with each child', function () {
-      var snapshot = new Snapshot(ref, [{
+      var snapshot = new Snapshot(ref, [
+        new DocumentChange({
         foo: 'bar',
         bar: 'baz'
-      },{
+      }, 1, 1, DocumentChangeType.added),
+        new DocumentChange({
         foo: 'bar2',
         bar: 'baz2'
-      }], ['0', '1']);
+      }, 1, 1, DocumentChangeType.added)], ['0', '1']);
       var callback = sinon.spy();
       snapshot.forEach(callback);
       expect(callback.firstCall.args[0].data()).to.deep.equal({ foo: 'bar', bar: 'baz' });
@@ -30,9 +34,10 @@ describe('QuerySnapshot', function () {
     });
 
     it('can set a this value', function () {
-      var snapshot = new Snapshot(ref, {
-        foo: 'bar'
-      }, ['0']);
+      var snapshot = new Snapshot(
+        ref,
+        [new DocumentChange({foo: 'bar'}, 1, 1, DocumentChangeType.added)],
+        [0]);
       var callback = sinon.spy();
       var context = {};
       snapshot.forEach(callback, context);

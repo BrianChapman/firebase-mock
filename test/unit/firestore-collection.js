@@ -369,6 +369,7 @@ describe('MockFirestoreCollection', function () {
   describe('#onSnapshot', function () {
     it('returns value after collection is updated', function (done) {
       collection.onSnapshot(function(snap) {
+        // console.log(1111, snap.docs);
         var names = [];
         snap.docs.forEach(function(doc) {
           names.push(doc.data().name);

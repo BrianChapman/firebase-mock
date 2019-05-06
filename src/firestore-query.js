@@ -6,6 +6,8 @@ var Stream = require('stream');
 var Promise = require('rsvp').Promise;
 var autoId = require('firebase-auto-ids');
 var QuerySnapshot = require('./firestore-query-snapshot');
+var MockFirestoreDocumentChange = require('./firestore-document-change');
+var DocumentChangeType = require('./firestore-document-change-type');
 var Queue = require('./queue').Queue;
 var utils = require('./utils');
 var validate = require('./validators');
@@ -70,13 +72,14 @@ MockFirestoreQuery.prototype.get = function () {
       var _results = self._results();
       var results = _results.results;
       var keyOrder = _results.keyOrder;
+      // See https://firebase.google.com/docs/reference/js/firebase.firestore.DocumentChange.html
+      var documentChanges = {};
+      keyOrder.forEach(function (key, i) {
+        documentChanges[key] = new MockFirestoreDocumentChange(results[key], i, -1, DocumentChangeType.added);
+      });
 
       if (err === null) {
-        if (_.size(self.data) !== 0) {
-          resolve(new QuerySnapshot(self.parent === null ? self : self.parent.collection(self.id), results, keyOrder));
-        } else {
-          resolve(new QuerySnapshot(self.parent === null ? self : self.parent.collection(self.id)));
-        }
+          resolve(new QuerySnapshot(self.parent === null ? self : self.parent.collection(self.id), documentChanges, keyOrder, self));
       } else {
         reject(err);
       }
@@ -161,11 +164,38 @@ MockFirestoreQuery.prototype.onSnapshot = function (optionsOrObserverOrOnNext, o
     // and send the data to the callback if different.
     if (err === null) {
       self.get().then(function (querySnapshot) {
-        var results = self._results();
-        if (JSON.stringify(results) !== JSON.stringify(context.data) || includeMetadataChanges) {
-          onNext(new QuerySnapshot(self.parent === null ? self : self.parent.collection(self.id), results.results, results.keyOrder));
-          // onNext(new QuerySnapshot(self.id, self.ref, results));
-          context.data = results;
+        var _results = self._results();
+        var results = _results.results;
+        var keyOrder = _results.keyOrder;
+        if (JSON.stringify(_results) !== JSON.stringify(context.data) || includeMetadataChanges) {
+          var documentChanges = {};
+          keyOrder.forEach(function (key, i) {
+            var previousIndex = context.data.keyOrder.indexOf(key);
+            var changeType;
+            if (context.data.keyOrder.indexOf(key) === -1) {
+              changeType = DocumentChangeType.added;
+            } else if (JSON.stringify(results[key]) !== JSON.stringify(context.data.results[key])) {
+              changeType = DocumentChangeType.modified;
+            }
+            documentChanges[key] = new MockFirestoreDocumentChange(
+              results[key],  // doc
+              i,  // new index position
+              previousIndex,  // previous index position or -1 if added or removed
+              changeType // added, modified, or removed
+            );
+          });
+          context.data.keyOrder.forEach(function (key, i) {
+            if (keyOrder.indexOf(key) === -1) {
+              documentChanges[key] = new MockFirestoreDocumentChange(
+                results[key],
+                -1,
+                i,
+                DocumentChangeType.removed
+              );
+            }
+          });
+          onNext(new QuerySnapshot(self.parent === null ? self : self.parent.collection(self.id), documentChanges, keyOrder, self));
+          context.data = _results;
         }
       });
     } else {
@@ -189,27 +219,19 @@ MockFirestoreQuery.prototype._results = function () {
     keyOrder.push(key);
   });
 
-
-  if (_.size(this.data) === 0) {
-    return results;
-  }
-
   var ordered = [];
   _.forEach(this.data, function(data, key) {
     ordered.push({ data: data, key: key });
   });
 
   ordered = _.orderBy(ordered, _.map(this.orderedProperties, function(p) { return 'data.' + p; }), this.orderedDirections);
-
   keyOrder = [];
   _.forEach(ordered, function(item) {
     keyOrder.push(item.key);
   });
-
   if (this.limited > 0) {
     keyOrder = keyOrder.slice(0, this.limited);
   }
-
   return {results: results, keyOrder: keyOrder};
 };
 
