@@ -25,6 +25,7 @@ MockFirestoreQuerySnapshot.prototype.forEach = function (callback, context) {
 };
 
 MockFirestoreQuerySnapshot.prototype.docChanges = function (options) {
+  options = options || {};
   // Returns an array of the documents changes since the last snapshot. If this is the first snapshot, all documents will be in the list as added changes.
 
   // Parameters
